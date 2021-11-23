@@ -1,0 +1,26 @@
+假设我们有3台电脑  攻击机  目标机  跳板
+目标机使用 python -m http.server 开启一个简单的服务
+我们可以直接通过 目标机的ip来访问
+如果 目标机 iptables -A INPUT -p tcp -s 攻击机IP -j DROP  把攻击机的tcp协议禁掉
+攻击机可以ping目标机(icmp) 但不能通过网页输入IP来访问(tcp)
+怎么办?
+我们可以在跳板上运行 ptunnel
+再在攻击机上运行     ptunnel -p 跳板ip -lp 2000（端口） -da 目标机 -dp 80(目标端口)
+这时我们直接在网页访问 127.0.0.1:2000就可以访问目标机了
+
+ptunnel简介
+ptunnel是一款建立ICMP隧道传输数据的工具。
+
+适用条件
+防火墙只允许ping出站流量，利用ptunnel建立ICMP隧道，从而实现传输数据。
+
+ptunnle常用命令
+-p                       指定服务器端IP地址
+
+-lp                      侦听本地端口
+
+-da                     访问目标的IP地址
+
+-dp                     访问目标的端口
+
+-x                       连接密码

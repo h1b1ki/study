@@ -1,0 +1,29 @@
+godot   如果节点重叠,要调节mouse->filter选项
+定义数组，var A:=[]  或者   var A:array 
+anchor，锚点
+
+popup弹窗，默认隐藏
+可以视作cotrol
+popup显示应该用.popup()函数,不应该用show()，因为；show弹出你点其他地方不会隐藏popup，popup弹出后点击其他地方会隐藏
+属性exclusive；独占   用户点击其他地方不会隐藏,有点跟show一样
+popuppanel   panel,仪表盘  可以看成popup和panel的结合
+windowdialog   有一个标题 适合做带标题的对话框
+属性resizeable ， 用户是否可以拉动弹窗
+acceptdialog  有一个标题和文字框 适合用户确认的对话框
+属性autowrap 自动换行
+       hide on ok 点击ok后自动隐藏弹窗
+confirmationdialog  跟acceptdialog没啥区别,多了个cancle按钮,不用电右上角的X
+
+
+position和global_position
+position是以节点自身为坐标系
+global_position是以原点为坐标系
+
+set_point_position中的参数idx是path2d中设置的顶点
+
+rotated()参数为负向左旋转
+
+
+注意场景的构造时机,可能出现意想不到的bug
+
+一个实例的节点外部有脚本的话，内部的脚本要取消

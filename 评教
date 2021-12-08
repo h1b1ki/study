@@ -1,0 +1,6 @@
+a=document.querySelectorAll('[value="0"]')
+querySelectorAll可以这样用
+for(i=0;i<16;i++){
+
+    a[i].checked=true
+}

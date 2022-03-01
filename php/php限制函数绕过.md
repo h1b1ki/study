@@ -18,3 +18,36 @@
 - 这会导致执行 php 程序之前包含HTTP中POST的数据，实现任意代码执行的目的，但即使这样也还是不行，因为这里的任意代码执行依然逃不开 php 配置文件的控制，所以就还需要更进一层，可以利用extension这个环境变量，设置执行脚本是要引入的动态链接库文件（Linux 下是.so，Windows 下是.dll）：
 - `"PHP_VALUE": "extension = /xxx/xxx.so"`
 - 这就需要有任意文件上传权限，不过都开始研究限制绕过了，这点权限是肯定有的，然后就是编译构造自己的.so文件，并向其中添加要执行的系统命令，这样链接库文件在被引入的时候就会执行预定的命令，同时也不受 php 配置文件的限制
+### php-fpm具体绕过
+- php-fpmPHP-FPM默认监听9000端口，如果这个端口暴露在公网，则我们可以自己构造fastcgi协议，和fpm进行通信。
+- PHP-FPM拿到fastcgi的数据包后，进行解析，得到上述这些环境变量。然后，执行SCRIPT_FILENAME的值指向的PHP文件，也就是/var/www/html/index.php
+- 此时，SCRIPT_FILENAME的值就格外重要了。因为fpm是根据这个值来执行php文件的，如果这个文件不存在，fpm会直接返回404：
+- 在fpm某个版本之前，我们可以将SCRIPT_FILENAME的值指定为任意后缀文件，比如/etc/passwd；但后来，fpm的默认配置中增加了一个选项security.limit_extensions其限定了只有某些后缀的文件允许被fpm执行，默认是.php。所以，当我们再传入/etc/passwd的时候，将会返回Access denied.
+- 由于这个配置项的限制，如果想利用PHP-FPM的未授权访问漏洞，首先就得找到一个已存在的PHP文件。万幸的是，通常使用源安装php的时候，服务器上都会附带一些php后缀的文件，我们使用find / -name "*.php"来全局搜索一下默认环境   找到了不少。这就给我们提供了一条思路，假设我们爆破不出来目标环境的web目录，我们可以找找默认源安装后可能存在的php文件，比如/usr/local/lib/php/PEAR.php
+- 那么，为什么我们控制fastcgi协议通信的内容，就能执行任意PHP代码呢？
+- 理论上当然是不可以的，即使我们能控制SCRIPT_FILENAME，让fpm执行任意文件，也只是执行目标服务器上的文件，并不能执行我们需要其执行的文件。
+- 但PHP是一门强大的语言，PHP.INI中有两个有趣的配置项，auto_prepend_file和auto_append_file。
+- auto_prepend_file是告诉PHP，在执行目标文件之前，先包含auto_prepend_file中指定的文件；auto_append_file是告诉PHP，在执行完成目标文件后，包含auto_append_file指向的文件。
+- 那么就有趣了，假设我们设置auto_prepend_file为php://input，那么就等于在执行任何php文件前都要包含一遍POST的内容。所以，我们只需要把待执行的代码放在Body中，他们就能被执行了。（当然，还需要开启远程文件包含选项allow_url_include）
+- 那么，我们怎么设置auto_prepend_file的值？
+- 这又涉及到PHP-FPM的两个环境变量，PHP_VALUE和PHP_ADMIN_VALUE。这两个环境变量就是用来设置PHP配置项的，PHP_VALUE可以设置模式为PHP_INI_USER和PHP_INI_ALL的选项，PHP_ADMIN_VALUE可以设置所有选项。（disable_functions除外，这个选项是PHP加载的时候就确定了，在范围内的函数直接不会被加载到PHP上下文中）
+- 最后传入如下数据 设置auto_prepend_file = php://input且allow_url_include = On，然后将我们需要执行的代码放在Body中，即可执行任意代码
+- {
+    'GATEWAY_INTERFACE': 'FastCGI/1.0',
+    'REQUEST_METHOD': 'GET',
+    'SCRIPT_FILENAME': '/var/www/html/index.php',
+    'SCRIPT_NAME': '/index.php',
+    'QUERY_STRING': '?a=1&b=2',
+    'REQUEST_URI': '/index.php?a=1&b=2',
+    'DOCUMENT_ROOT': '/var/www/html',
+    'SERVER_SOFTWARE': 'php/fcgiclient',
+    'REMOTE_ADDR': '127.0.0.1',
+    'REMOTE_PORT': '12345',
+    'SERVER_ADDR': '127.0.0.1',
+    'SERVER_PORT': '80',
+    'SERVER_NAME': "localhost",
+    'SERVER_PROTOCOL': 'HTTP/1.1'
+    'PHP_VALUE': 'auto_prepend_file = php://input',
+    'PHP_ADMIN_VALUE': 'allow_url_include = On'
+}
+- 参考p牛 https://www.leavesongs.com/PENETRATION/fastcgi-and-php-fpm.html#

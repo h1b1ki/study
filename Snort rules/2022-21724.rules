@@ -1,0 +1,1 @@
+alert tcp any any <> $HOME_NET any (msg: "PostgreSQL jdbc exploit attempt to CVE-2022-21724"; sid:100000011; flow:to_client,established; content:"|76 61 6c 75 65 3d 22 63 61 6c 63 22|"; content:"|6e 61 6d 65 3d 22 77 68 61 74 65 76 65 72 22|"; content:"|76 61 6c 75 65 3d 22 23 7b 20 70 62 2e 73 74 61 72 74 28 29 20 7d 22|";content:"|3c 70 72 6f 70 65 72 74 79|";)

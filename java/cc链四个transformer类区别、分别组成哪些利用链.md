@@ -21,14 +21,26 @@
 - readObject被AnnotationInvocationHandler改写
 - LazyMap的get方法可以调用  `Object value = factory.transform(key)`;  这里我们可以让factory = ChainedTransformer来调用transform；；这里factory是由构造函数赋值的
 - LazyMap的构造函数是受保护protected，但有一个decorate()方法可以创建lazymap `LazyMap.decorate(hashMap,chainedTransformer)`
-- 那么我们就要调用LazyMap的get方法是吧,AnnotationInvocationHandler类(动态代理)实现了InvocationHandler接口，其invoke()方法中会调用`this.memberValues.get(var4)` 那么我们只要让`this.memberValues = LazyMap`  然后在调用动态代理的方法,这不就调用了invoke()了吗
-- readObject被AnnotationInvocationHandler改写 在这个方法调用中有`this.memberValues.entrySet()` 这就调用了invoke()
+- 在创建lazymap后那么我们就要调用LazyMap的get方法是吧,AnnotationInvocationHandler类(动态代理)实现了InvocationHandler接口，其invoke()方法中会调用`this.memberValues.get(var4)` 那么我们只要让`this.memberValues = LazyMap`  然后在调用动态代理的方法,这不就调用了invoke()了吗,然后就调用了get.
+- 注意:AnnotationInvocationHandler 的构造函数没有用public修饰，没法直接通过new 的方式生成对象，所以我们要通过万能的反射获取构造方法，然后执行newInstance的方式来生成AnnotationInvocationHandler对象
+- 以下是链
+- readObject被AnnotationInvocationHandler改写 在readObject这个方法调用中有`this.memberValues.entrySet()` 而hashmap中也有entryset这个方法,这就调用了invoke()
 - `this.memberValues`是AnnotationInvocationHandler构造函数时赋的值,我们是可以操作的
-- 总体流程如下 先创建恶意chainedTransformer，然后用LazyMap.decorate构建一个lazymap，然后把lazymap作为参数 ，构造AnnotationInvocationHandler对象， 用这个对象生成我们的动态代理(动态代理使用方法才会触发invoke())，，最后将我们的动态代理作为参数再一次生成AnnotationInvocationHandler,这时候`this.memberValues = 我们的动态代理`，所以在调用readObject会触发invoke()，然后成功hack
+- 总体流程如下 先创建恶意chainedTransformer，然后用LazyMap.decorate构建一个lazymap，然后把lazymap作为参数 ，构造AnnotationInvocationHandler对象， 用这个对象生成lazymap的动态代理(动态代理使用方法才会触发invoke())，，最后将我们的动态代理作为参数再一次生成AnnotationInvocationHandler,这时候`this.memberValues = 我们的动态代理`，所以在调用readObject会触发invoke()，然后成功hack
 - 注意事项！ 在invoke中调用的this.memberValues是我们的lazyMap  在readObject中调用的this.memberValues是我们的动态代理
-
-## cc2
+1. AnnotationInvocationHandler.readObject() ---反序列化
+2. this.memberValues.entrySet() ---这个this.memberValues是lazymap的动态代理,lazymap也有entrySet()方法,会调用invoke
+3. AnnotationInvocationHandler.invoke() ---invoke会有下面这句 
+4. this.memberValues.get() ---this.memberValues = LazyMap  invoke会调用 LazyMap.get()
+5. Lazy map.get()
+6. ChainedTransformed.transform()
+7. Runtime.getRuntime().exec(cmd)
+-----------------------------------
+YsoSerial 工具常用Payload分析之CC1
+https://blog.51cto.com/u_15127654/4140843
+## cc2  TranslatesImpl的_bytecodes字节码
 - https://www.cnblogs.com/byErichas/p/15749668.html
+- https://zhuanlan.zhihu.com/p/504127340
 - CC2利用链核心主要是利用动态字节码编程，将恶意类转为字节码，通过反射的方式将恶意类的字节码赋值给TranslatesImpl类的_bytecodes属性， TranslatesImpl这个类可以将_bytecodes中的字节码转换为类（defineTransletClasses方法）复制给属性_class，并且也可以将_class实例化（newInstance方法），通过利用链依次调用方法最后实例化触发恶意类构造方法或静态类中的恶意代码。
 - 第一步 与fastjson类似,把恶意类的字节码设置给TemplatesImpl的_bytecodes属性
 - 在InvokerTransformer类中有一个transform()方法会调用InvokerTransformer在构造时传入的参数`invokerTransformer.transform(Runtime.getRuntime());`这样会调用Runtime.getRuntime()中的方法,这个方法就是在构造时传入的参数
@@ -39,4 +51,15 @@
 - 再去找重写了readObject()方法的，又要使用Comparator比较器的类,`PriorityQueue`
 - 该队列的comparator属性我们可以指定成TransformingComparator比较器的，这样就可以调用TransformingComparator的compare()方法了
 - 并且把比较对象设置成TemplatesImpl类的对象，再添加加两个TemplatesImpl对象到`PriorityQueue的queue属性中`  PriorityQueue会调用ObjectInputStream 的实例化对象s把queue中的数据进行反序列化
+
+## CC3  ysoserial InstantiateTransformer
+- https://iter01.com/609345.html
+- 这个与cc1类似，只是反射调用方法是用的不是invokeTransformer而用的是InstantiateTransformer
+- 入口点还是Annotationinvoationhandler的Entryset
+- 此时将会调用membervalues.get，其中var4位entryset，而membervalues中存储的为lazymap类的实例，即调用lazymap的get函数
+- 接着调用chainedTransformer来对key进行转换
+- 其中iTransformer中存储了除了constantTransformer直接返回类，这里使用的类是class com.sun.org.apache.xalan.internal.xsltc.trax.TrAXFilter
+- 接下来到了InstantiateTransformer的transformer函数，这里面会拿到input对应类的参数类型为templates的构造函数，然后再实例化
+- 接着一路跟到TrAXFilter的构造函数中，可以看到这里实际上调用了templates.newTransformer,那我们知道templatesImpl的可以通过_bytecode
+- 
 

@@ -1,7 +1,0 @@
-@component的衍生注解(功能一样,名字不同而已,为了区别)
-他会按照MVC三层架构分层
-dao  @Repository(存储库)
-service @service(服务)
-controller @controller(控制器)
-都是代表将某个类注册到spring 然后装配bean
-@scope 设置为单例  @scope(singleton) 设置为原型 @scope(prototype)
